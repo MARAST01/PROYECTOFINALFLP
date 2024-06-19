@@ -208,7 +208,8 @@
                   (apply-env-ref env id)
                   (evaluar-expresion rhs-exp env))
                  1))
-      (prim-num-exp (exp1 prim exp2) '())
+      (prim-num-exp (exp1 prim exp2) 
+        apply-num-prim prim (evaluar-expresion exp1 env) (evaluar-expresion exp2 env) )
       (prim-bool-exp (prim lexp) (
         cases primitivaBooleana prim
         (and-prim () (let loop([values (map (lambda (exp) (evaluar-expresion exp env)) lexp)])
@@ -282,6 +283,26 @@
       (match-exp (exp1 lregular-exp exp2) '())
     ))
 )
+
+(define apply-num-prim
+ (lambda (prim num1 num2)
+  (cases primitiva prim
+          (sum-prim () (lambda (a b)(+ a b)))
+          (minus-prim () (lambda (a b)(- a b)))
+          (mult-prim () (lambda (a b)(* a b)))
+          (mod-prim () (lambda (a b)(modulo a b)))
+          (elevar-prim ()(lambda (a b) (expt a b)))
+          (menor-prim () (lambda (a b)(< a b)))
+          (mayor-prim ()(lambda (a b)(> a b)))
+          (menorigual-prim () (lambda (a b)(<= a b)))
+          (mayorigual-prim () (lambda (a b)(>= a b)))
+          (diferente-prim ()(lambda (a b)(not(= a b))))
+          (igual-prim () (lambda (a b)(= a b)))
+    )
+  )
+)
+
+
 
 
 
