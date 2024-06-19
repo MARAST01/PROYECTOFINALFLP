@@ -9,7 +9,7 @@
    (letter (arbno (or letter digit "?"))) symbol)
   (digitoBinario
    ("b" (or "0" "1") (arbno (or "0" "1"))) string)
-   ;Borrar  
+ 
   (digitoBinario
    ("-" "b" (or "0" "1") (arbno (or "0" "1"))) string)
   (digitoDecimal
@@ -169,7 +169,7 @@
       (num-exp (num) (
         cases numero-exp num
         (decimal-num (num) num)
-        (bin-num (num) (string->symbol num))
+        (bin-num (num)  num)
         (octal-num (num) (string->symbol num))
         (hex-num (num) (string->symbol num))
         (float-num (num) num)
@@ -209,6 +209,7 @@
                   (evaluar-expresion rhs-exp env))
                  1))
       (prim-num-exp (exp1 prim exp2) 
+      ;;donde dice apply-binarios poner apply-num-prim para que funcione
         ((apply-num-prim prim) (evaluar-expresion exp1 env) (evaluar-expresion exp2 env) ))
       (prim-bool-exp (prim lexp) (
         cases primitivaBooleana prim
@@ -272,7 +273,14 @@
 
 
 
-      (for-exp (id from-exp until-exp by-exp do-exp) '())
+      (for-exp (id from-exp until-exp by-exp do-exp)
+       (let* ((inicio (evaluar-expresion from-exp env))
+              (fin (evaluar-expresion until-exp env))
+              (incremento (evaluar-expresion by-exp env)))
+         (let loop ((i inicio))
+           (when (<= i fin)
+             (evaluar-expresion do-exp (extend-env env id i))
+             (loop (+ i incremento))))))
       (while-exp (exp1 exp2) '())
       (switch-exp (exp lexp1 lexp2  default-exp) '())
       (func-exp (lids exp) '())
@@ -301,7 +309,24 @@
     )
   )
 )
-
+(define apply-binarios
+  (lambda (prim)
+    (cases primitiva prim
+      (sum-prim () (lambda (a b)(string-append "b" (number->string(+ (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+          (minus-prim () (lambda (a b)(string-append "b" (number->string(- (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+          (mult-prim () (lambda (a b)(string-append "b"(number->string(* (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+          (mod-prim () ((lambda (a b)(string-append "b" (number->string(modulo (string->number (substring a) 2) (string->number (substring b) 2)) 2)))))
+          (elevar-prim ()(lambda (a b)(string-append "b" (number->string(expt (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+          (menor-prim () (lambda (a b)(string-append "b" (number->string(< (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+          (mayor-prim ()(lambda (a b)(string-append "b" (number->string(> (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+          (menorigual-prim () (lambda (a b) (string-append "b" (number->string(<= (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+          (mayorigual-prim () (lambda (a b) (string-append "b"(number->string(>= (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+          (diferente-prim ()(lambda (a b) (string-append "b"(number->string(not (= (string->number (substring a) 2) (string->number (substring b) 2)) 2)))))
+          (igual-prim () (lambda (a b) (string-append "b"(number->string(= (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
+    )
+  )
+)
+  
 
 
 
