@@ -148,258 +148,142 @@
     (regular-exp ("default") default-match-exp)
     )
   )
-
-; Evaluar Programa
-(define evaluar-programa
+(define eval-program
   (lambda (pgm)
     (cases programa pgm
-      (a-program (exp) (evaluar-expresion exp ambiente-inicial))
-      )
+      (a-program (body)
+                 (evaluar-expresion body (init-env)))
     )
   )
-
+)
 ; Evaluar Expresion
 (define evaluar-expresion
-  (lambda (exp amb)
+  (lambda (exp env)
     (cases expresion exp
-      ;Numeros
-      (num-exp (dato) dato)
-      
-      ;Identificadores
-      (var-exp (id) (apply-env amb id))
-      
-      ;Strings
-      (cadena-exp (str _) (substring str 1 (-(string-length str) 1)));pendiriente de revision porque lo dio copilot
-      
-      ;Valores Booleanos
-      (prim-bool-exp (prim-bool exp) )
-      
-      ;Condicionales "If"
-      ;se evalua la condicion en el ambiente, y se guarda como condicion-val
-      ;posteriormente se evalua si su resultado fue un bool, si lo fue, se aplica un if de racket
-      ;para retornar el valor de la consecuencia o el valor del else, ambos evaluados para poder ver su valor
-      (if-exp (condicion consecuencia else)
-              (let (
-                    [condicion-val (evaluar-expresion condicion amb)]
-                    )
-                (if (boolean? condicion-val)
-                    (if condicion-val (evaluar-expresion consecuencia amb) (evaluar-expresion else amb))
-                    (eopl:error "Se esperaba un valor booleano para el IF"))
+      (bool-exp (bool) (
+        cases bool-expresion bool
+        (true-exp () #t)
+        (false-exp () #f)
+      ))
+      (var-exp (id) (apply-env env id))
+      (num-exp (num) (
+        cases numero-exp num
+        (decimal-num (num) num)
+        (bin-num (num) (string->symbol num))
+        (octal-num (num) (string->symbol num))
+        (hex-num (num) (string->symbol num))
+        (float-num (num) num)
+      ))
+      (cadena-exp (id lids) (
+        let loop( [values lids]
+                  [acc (symbol->string id)]
                 )
-              )
+                (cond
+                  [(null? values) acc]
+                  [else (loop (cdr values) (string-append acc " " (symbol->string (car values))))])
+      ))
+      (decl-exp (decl) (
+        cases var-decl decl
+        (lvar-exp (ids rands body)
+               (let ((args (eval-rands rands env)))
+                 (evaluar-expresion body
+                                  (extend-env ids args env))))
 
-      ;Ligaduras locales
-      (let-exp (ids rands body)
-               (let
-                   (
-                    [lvalues (map (lambda (x) (evaluar-expresion x amb)) rands)]
-                    )
-                 (evaluar-expresion body (ambiente-extendido ids lvalues amb))
-                 )
-               )
-      ;Primitivas
-      ;si la primera exp es nula, significa que es una primitiva de una sola expresion, por ejemplo (add1 2)
-      ;sino lo es, aplicamos el procedimiento que retorna evaluar-pimitiva a la expresion evaluada en el ambiente actual
-      ;junto con la segunda expresion evaluada para generar la recursion
-      (prim-exp (exp1 prim exp2)
-                (if (null? exp1)
-                    ;los casos en los que la primitiva requiere solamente un argumento
-                    ((evaluar-primitiva prim) (evaluar-expresion exp2 amb) )
-                    (if (= (length exp1) 1)
-                        ;los casos en los que la primitiva requiere 2 o mas
-                        
-                        ;(display "estoy aqui")
-                        ((evaluar-primitiva prim) (evaluar-expresion (car exp1) amb) (evaluar-expresion exp2 amb) )
-                        
-                        
-                        ;en el caso en el que se envien mas expresiones de las esperadas entre una sola primitiva
-                        ;ej (1 2 + 1)
-                        (eopl:error "Se esperaba unicamente un segundo parametro para la operacion primitiva")
-                        )
-                    )
-                )
+        ;;;Revisar el Let para que no acepte set
+        (let-exp (ids rands body)
+               (let ((args (eval-rands rands env)))
+                 (evaluar-expresion body
+                                  (extend-env ids args env))))
+      ))
+      (lista-exp (lexp) (map (lambda (exp) (evaluar-expresion exp env)) lexp))
+      (cons-exp (exp1 exp2) (cons (evaluar-expresion exp1 env) (evaluar-expresion exp2 env)))
+      (empty-list-exp () '())
+      (array-exp (lexp) (list->vector (map (lambda (exp) (evaluar-expresion exp env)) lexp)))
       
-      ;Procedimientos
-      ;Esto ya que cuando se crea un procedimiento se crea un nuevo ambiente en una cerradura(closure) por lo cual
-      ;previamente a esto creamos el datatype necesario para que sea reconocido.
-      ;Por lo tanto la propia clausura, guarda el propio ambiente donde fue creado.
-      (proc-exp (ids body)(closure ids body amb))
-      
-      ;Llamado a procedimiento
-      (app-exp (rator rands)
-               (let
-                   ;area de definiciones
-                   ;lrands = evaluamos cada una de los rands que serian los identificadores del procedimiento para
-                   ;conocer sus valores, o eventualmente el valor que tomen al evaluarse
-                   ;proc = evaluamos el rator que seria el nombre del procedimiento, para verificar que efectivamente lo sea
-                   ([lrands (map (lambda (x) (evaluar-expresion x amb)) rands)]
-                    [proc (evaluar-expresion rator amb)])
-                 (if
-                  ;si proc es un procedimiento, entramos a verificar
-                  (procval? proc)
-                  (cases procval proc
-                    (closure (lid body old-env)
-                             ;si el numero de variables ingresadas coniciden con las esperadas
-                             ;si lo hace, evaluamos el cuerpo de el closure, osea del proc, con las variables
-                             ;que estamos ingresando, ademas de el ambiente anterior
-                             ;si no lo son simplemente lo retornamos en un mensaje de error
-                             (if (= (length lid) (length lrands))
-                                 (evaluar-expresion body (ambiente-extendido lid lrands old-env))
-                                 (eopl:error "Se espearaban " (length lid) "parametros y se han recibido " (length lrands)))))
-                  (eopl:error proc "No corresponde a un procedimiento") 
-                  )))
-      
-      ;Begin
-      ;
-      (begin-exp (exp lexp)
-                 (if
-                  (null? lexp)
-                  (evaluar-expresion exp amb)
-                  (begin
-                    (evaluar-expresion exp amb)
-                    (letrec
-                        ([evaluar-begin (lambda (lexp)
-                                          (cond
-                                            [(null? (cdr lexp)) (evaluar-expresion (car lexp) amb)]
-                                            [else
-                                             (begin
-                                               (evaluar-expresion (car lexp) amb)
-                                               (evaluar-begin (cdr lexp)))]
-                                            ))])                         
-                      (evaluar-begin lexp)))))
-      ;;set
-      (set-exp (id exp)
+     
+     ;; Revisar set
+      (set-exp (id rhs-exp)
                (begin
-                 (setref! (apply-env-ref amb id) (evaluar-expresion exp amb))
+                 (setref!
+                  (apply-env-ref env id)
+                  (evaluar-expresion rhs-exp env))
                  1))
-
-      ;;For
-      (for-exp (exp1 exp2 exp3 body)
-               (cases expresion exp1
-                 (for-assign (id exp)
-                            (letrec
-                             ;area definiciones
-                                ;value = la expresion de la derecha a la asignacion para sacar su valor
-                             ([value (evaluar-expresion exp amb)]
-                                ;ambiente = el ambiente actual lo incorporamos a un ambiente que contiene
-                                ;la variable de control, para poderla cambiar recursivamente y tomarla como
-                                ;contador
-                              [ambiente (ambiente-extendido (list id) (list value) amb)]
-                                ;iterar = momento donde se aplica la exp3, osea la primitiva sobre el contador
-                                ;mientras que la exp2, la condicion del for, sea true, ejecutamos sencuencialmente
-                                ;con ayuda de racket, el body, y la primitiva sobre el contador para que cambie
-                                ;en la siguiente iteracion
-                              [iterar (lambda ()
-                                        (if (evaluar-expresion exp2 ambiente)
-                                            (begin
-                                              (evaluar-expresion body ambiente)
-                                              (evaluar-expresion exp3 ambiente)
-                                              (iterar))
-                                            ;retornamos un 1 por motivos practicos, cuando la condicion ya no es verdadera
-                                            1)
-                                        )
-                                      ])
-                              ;area de ejecucion
-                              (iterar)
-                              )
-                            )
-                 (else "El primer parametro de un for debe ser la asignacion de una variable")
-                 )
-               )
-      
-      ;While
-      ;para el while la logica es muy parecida que la del for, solamente que no hay expresion contador,
-      ;ni tampoco hay una expresion directa para cambiar el contador, debe ser especificada dentro del body
-      (while-exp (exp1 body)
-                 (letrec
-                     ;area de definiciones
-                     ;iterar = mientras que la exp1 sea verdadera en el ambiente actual, se ejecuta el cuerpo del while
-                     ;cuando ya deja de serlo, simplemente retornamos un 1
-                     ([iterar (lambda ()
-                                (if (evaluar-expresion exp1 amb)
-                                    (begin
-                                      (evaluar-expresion body amb)
-                                      (iterar))
-                                    1)
-                                )])
-                   ;area de ejecucion
-                   (iterar)))
-
-
-      ;Estructuras
-      ;Create Struct
-      (create-exp (structId id lids exp)
-                  (evaluar-expresion exp (ambiente-extendido
-                                          (list structId)
-                                          (list (a-struct (cons id lids))) amb)))
-
-      ;struct-instance
-      (struct-instance (id lexp)
-                       (let (
-                             [estructura (apply-env amb id)]
-                             [lvalues (map (lambda (x) (evaluar-expresion x amb)) lexp)]
-                             )
-                         (begin
-                           (cases struct estructura
-                             (a-struct (lids) (ambiente-extendido lids lvalues (ambiente-vacio)))))
-                         ))
-
-      ;Acceso
-      (access-exp (id varId)
-                  (let (
-                        [estructura (apply-env amb id)]
-                        )
-                    (apply-env estructura varId)
+      (prim-num-exp (exp1 prim exp2) '())
+      (prim-bool-exp (prim lexp) (
+        cases primitivaBooleana prim
+        (and-prim () (let loop([values (map (lambda (exp) (evaluar-expresion exp env)) lexp)])
+                        (cond
+                          ((null? values) #t)
+                          ((null? (cdr values)) (car values))
+                          (else (and (car values) (loop (cdr values))))))
+                      )
+        (or-prim () (let loop([values (map (lambda (exp) (evaluar-expresion exp env)) lexp)])
+                       (cond
+                         ((null? values) #f)
+                         ((null? (cdr values)) (car values))
+                         (else (or (car values) (loop (cdr values))))))
+                     )
+        (xor-prim () (let ([a (evaluar-expresion (car) env)]
+                           [b (evaluar-expresion (cadr) env)]) 
+                          (and (or a b) (not (and a b)))
                     ))
+        (not-prim () (not (evaluar-expresion (car lexp) env)))
+      ))
+      (prim-list-exp (prim exp) (
+        cases primitivaListas prim
+        (first-primList () (car (evaluar-expresion exp env)))
+        (rest-primList () (cdr (evaluar-expresion exp env)))
+        (empty-primList () (null? (evaluar-expresion exp env)))
+      ))
+      (prim-array-exp (prim lexp) (
+        cases primitivaArray prim
+        (length-primArr () (vector-length (evaluar-expresion exp env)))
+        (index-primArr () (vector-ref (evaluar-expresion (car lexp) env) (evaluar-expresion (cadr lexp) env)))
+        (slice-primArr () '())
+        (setlist-primArr () '()) ))
+      (prim-cad-exp (prim lexp) (
+        cases primitivaCadena prim
+        (concat-primCad () (
+          let loop( [values (map (lambda (exp) (evaluar-expresion exp env)) lexp)]
+                    [acc ""]
+                  )
+                  (cond
+                    [(null? values) acc]
+                    [else (loop (cdr values) (string-append acc (car values)))]
+          )
+        ))
+        (length-primCad () (string-length (evaluar-expresion (car lexp) env)))
+        (index-primCad () (string-ref (evaluar-expresion (car lexp) env) (evaluar-expresion (cadr lexp) env)))
+      ))
+      (if-exp (test-exp true-exp false-exp)
+              (if (evaluar-expresion test-exp env)
+                  (evaluar-expresion true-exp env)
+                  (evaluar-expresion false-exp env)))
 
-      ;Modificacion
-      (edit-exp (id varId exp)
-                (begin
-                 (setref! (apply-env-ref (apply-env amb id) varId) (evaluar-expresion exp amb))
-                 1))
+      (begin-exp (exp exps) 
+                 (let loop ((acc (evaluar-expresion exp env))
+                             (exps exps))
+                    (if (null? exps) 
+                        acc
+                        (loop (evaluar-expresion (car exps) 
+                                               env)
+                              (cdr exps)))))
 
-      
-      ;prevemos excepciones (otros casos)
-      (else exp) 
-      )
-    )
-  )
 
-;;Primitivas (Retorna un metodo)
-(define evaluar-primitiva
-  (lambda (prim)
-    (cases primitiva prim
-      ;;Primitivas aritmeticas
-      (sum-prim () (lambda (a b)(+ a b)))
-      (minus-prim () (lambda (a b)(- a b)))
-      (mult-prim () (lambda (a b)(* a b)))
-      (div-prim () (lambda (a b)(/ a b)))
-      (mod-prim () (lambda (a b)(modulo a b)))
-      (add-prim () (lambda (a)(+ a 1)))
-      (sub-prim () (lambda (a)(- a 1)))
-      ;;primitivas booleanas
-      (mayor-prim ()(lambda (a b)(> a b)))
-      (mayorigual-prim ()(lambda (a b)(>= a b)))
-      (menor-prim ()(lambda (a b)(< a b)))
-      (menorigual-prim ()(lambda (a b)(<= a b)))
-      (igual-prim ()(lambda (a b)(= a b)))
-      ;;primitivas sobre cadenas
-      (len-prim ()(lambda (a)(string-length a)))
-      (concat-prim ()(lambda (a b)(string-append a b)))
-      )
-    )
-  )
-;; ambientes
-(define-datatype ambiente ambiente?
-  (ambiente-vacio)
-  (ambiente-extendido-ref
-   (lids (list-of symbol?))
-   (lvalue vector?)
-   (old-env ambiente?)))
 
-(define ambiente-extendido
-  (lambda (lids lvalue old-env)
-    (ambiente-extendido-ref lids (list->vector lvalue) old-env)))
+      (for-exp (id from-exp until-exp by-exp do-exp) '())
+      (while-exp (exp1 exp2) '())
+      (switch-exp (exp lexp1 lexp2  default-exp) '())
+      (func-exp (lids exp) '())
+      (call-exp (exp lexp) '())
+      (new-struct-exp (id lexp) '())
+      (get-struct-exp (exp id ) '())
+      (set-struct-exp (exp1 id exp2) '())
+      (match-exp (exp1 lregular-exp exp2) '())
+    ))
+)
+
+
 
 ;Struct
 ;tipo de dato estructura, para poder manejar los cases por separado y tomarlo como tipo abstracto de dato
@@ -407,10 +291,7 @@
   (a-struct (l list?)))
 
 ;;;Ambiente inicial
-(define ambiente-inicial
-  (ambiente-extendido '(x y z) '(0 0 0)
-                      (ambiente-extendido '(a b c) '(4 5 6)
-                                          (ambiente-vacio))))
+
 
 
 
@@ -432,13 +313,130 @@
   (sllgen:make-string-scanner lexica gramatica))
 
 
+(define init-env
+  (lambda ()
+    (extend-env
+     '(i v x)
+     '(1 5 10)
+     (empty-env))))
+
 ;El Interpretador (FrontEnd + Evaluación + señal para lectura +
 (define interpretador
   (sllgen:make-rep-loop "--> "
-    (lambda (pgm)  pgm)
+    (lambda (pgm) (eval-program pgm))
     (sllgen:make-stream-parser 
       lexica
       gramatica)))
+
+
+
+
+
+;;; Ambiente
+
+
+(define eval-rands
+  (lambda (rands env)
+    (map (lambda (x) (eval-rand x env)) rands)))
+
+(define eval-rand
+  (lambda (rand env)
+    (evaluar-expresion rand env)))
+;; Ambientes
+
+
+;definición del tipo de dato ambiente
+(define-datatype environment environment?
+  (empty-env-record)
+  (extended-env-record
+   (syms (list-of symbol?))
+   (vec vector?)
+   (env environment?)))
+
+(define scheme-value? (lambda (v) #t))
+
+;empty-env:      -> enviroment
+;función que crea un ambiente vacío
+(define empty-env  
+  (lambda ()
+    (empty-env-record)))       ;llamado al constructor de ambiente vacío 
+
+;extend-env: <list-of symbols> <list-of numbers> enviroment -> enviroment
+;función que crea un ambiente extendido
+(define extend-env
+  (lambda (syms vals env)
+    (extended-env-record syms (list->vector vals) env)))
+
+
+;función que busca un símbolo en un ambiente
+(define apply-env
+  (lambda (env sym)
+    (deref (apply-env-ref env sym))))
+     ;(apply-env-ref env sym)))
+    ;env))
+(define apply-env-ref
+  (lambda (env sym)
+    (cases environment env
+      (empty-env-record ()
+                        (eopl:error 'apply-env-ref "No binding for ~s" sym))
+      (extended-env-record (syms vals env)
+                           (let ((pos (rib-find-position sym syms)))
+                             (if (number? pos)
+                                 (a-ref pos vals)
+                                 (apply-env-ref env sym)))))))
+
+
+;*******************************************************************************************
+;Referencias
+
+(define-datatype reference reference?
+  (a-ref (position integer?)
+         (vec vector?)))
+
+(define deref
+  (lambda (ref)
+    (primitive-deref ref)))
+
+(define primitive-deref
+  (lambda (ref)
+    (cases reference ref
+      (a-ref (pos vec)
+             (vector-ref vec pos)))))
+
+(define setref!
+  (lambda (ref val)
+    (primitive-setref! ref val)))
+
+(define primitive-setref!
+  (lambda (ref val)
+    (cases reference ref
+      (a-ref (pos vec)
+             (vector-set! vec pos val)))))
+
+
+;****************************************************************************************
+;Funciones Auxiliares
+
+; funciones auxiliares para encontrar la posición de un símbolo
+; en la lista de símbolos de un ambiente
+
+(define rib-find-position 
+  (lambda (sym los)
+    (list-find-position sym los)))
+
+(define list-find-position
+  (lambda (sym los)
+    (list-index (lambda (sym1) (eqv? sym1 sym)) los)))
+
+(define list-index
+  (lambda (pred ls)
+    (cond
+      ((null? ls) #f)
+      ((pred (car ls)) 0)
+      (else (let ((list-index-r (list-index pred (cdr ls))))
+              (if (number? list-index-r)
+                (+ list-index-r 1)
+                #f))))))
 
 
 (interpretador)
