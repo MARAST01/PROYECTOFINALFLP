@@ -166,13 +166,13 @@
         (false-exp () #f)
       ))
       (var-exp (id) (apply-env env id))
-      (num-exp (num) (
-        cases numero-exp num
-        (decimal-num (num) num)
-        (bin-num (num)  num)
-        (octal-num (num) (string->symbol num))
-        (hex-num (num) (string->symbol num))
-        (float-num (num) num)
+      (num-exp (n) (
+        cases numero-exp n
+        (decimal-num (n) n)
+        (bin-num (n)  n)
+        (octal-num (n) (string->symbol n))
+        (hex-num (n) (string->symbol n))
+        (float-num (n) n)
       ))
       (cadena-exp (id lids) (
         let loop( [values lids]
@@ -195,10 +195,10 @@
                  (evaluar-expresion body
                                   (extend-env ids args env))))
       ))
-      (lista-exp (lexp) (map (lambda (exp) (evaluar-expresion exp env)) lexp))
-      (cons-exp (exp1 exp2) (cons (evaluar-expresion exp1 env) (evaluar-expresion exp2 env)))
+      (lista-exp (lexp) '())
+      (cons-exp (exp1 exp2) '())
       (empty-list-exp () '())
-      (array-exp (lexp) (list->vector (map (lambda (exp) (evaluar-expresion exp env)) lexp)))
+      (array-exp (lexp) '())
       
      
      ;; Revisar set
@@ -210,53 +210,24 @@
                  1))
       (prim-num-exp (exp1 prim exp2) 
       ;;donde dice apply-binarios poner apply-num-prim para que funcione
-        ((apply-num-prim prim) (evaluar-expresion exp1 env) (evaluar-expresion exp2 env) ))
-      (prim-bool-exp (prim lexp) (
-        cases primitivaBooleana prim
-        (and-prim () (let loop([values (map (lambda (exp) (evaluar-expresion exp env)) lexp)])
-                        (cond
-                          ((null? values) #t)
-                          ((null? (cdr values)) (car values))
-                          (else (and (car values) (loop (cdr values))))))
-                      )
-        (or-prim () (let loop([values (map (lambda (exp) (evaluar-expresion exp env)) lexp)])
-                       (cond
-                         ((null? values) #f)
-                         ((null? (cdr values)) (car values))
-                         (else (or (car values) (loop (cdr values))))))
-                     )
-        (xor-prim () (let ([a (evaluar-expresion (car) env)]
-                           [b (evaluar-expresion (cadr) env)]) 
-                          (and (or a b) (not (and a b)))
-                    ))
-        (not-prim () (not (evaluar-expresion (car lexp) env)))
-      ))
+      (cond
+                    [(number? (evaluar-expresion exp1 env))  ((apply-num-prim prim) (evaluar-expresion exp1 env) (evaluar-expresion exp2 env))]
+                    [else ((apply-binarios prim) (evaluar-expresion exp1 env) (evaluar-expresion exp2 env))]
+          ))
+      (prim-bool-exp (prim lexp) #f)
       (prim-list-exp (prim exp) (
         cases primitivaListas prim
-        (first-primList () (car (evaluar-expresion exp env)))
-        (rest-primList () (cdr (evaluar-expresion exp env)))
-        (empty-primList () (null? (evaluar-expresion exp env)))
+        (first-primList () '())
+        (rest-primList () '())
+        (empty-primList () '())
       ))
       (prim-array-exp (prim lexp) (
         cases primitivaArray prim
-        (length-primArr () (vector-length (evaluar-expresion exp env)))
-        (index-primArr () (vector-ref (evaluar-expresion (car lexp) env) (evaluar-expresion (cadr lexp) env)))
+        (length-primArr () '())
+        (index-primArr () '())
         (slice-primArr () '())
         (setlist-primArr () '()) ))
-      (prim-cad-exp (prim lexp) (
-        cases primitivaCadena prim
-        (concat-primCad () (
-          let loop( [values (map (lambda (exp) (evaluar-expresion exp env)) lexp)]
-                    [acc ""]
-                  )
-                  (cond
-                    [(null? values) acc]
-                    [else (loop (cdr values) (string-append acc (car values)))]
-          )
-        ))
-        (length-primCad () (string-length (evaluar-expresion (car lexp) env)))
-        (index-primCad () (string-ref (evaluar-expresion (car lexp) env) (evaluar-expresion (cadr lexp) env)))
-      ))
+      (prim-cad-exp (prim lexp) '())
       (if-exp (test-exp true-exp false-exp)
               (if (evaluar-expresion test-exp env)
                   (evaluar-expresion true-exp env)
@@ -273,14 +244,7 @@
 
 
 
-      (for-exp (id from-exp until-exp by-exp do-exp)
-       (let* ((inicio (evaluar-expresion from-exp env))
-              (fin (evaluar-expresion until-exp env))
-              (incremento (evaluar-expresion by-exp env)))
-         (let loop ((i inicio))
-           (when (<= i fin)
-             (evaluar-expresion do-exp (extend-env env id i))
-             (loop (+ i incremento))))))
+      (for-exp (id from-exp until-exp by-exp do-exp) '())
       (while-exp (exp1 exp2) '())
       (switch-exp (exp lexp1 lexp2  default-exp) '())
       (func-exp (lids exp) '())
@@ -312,21 +276,100 @@
 (define apply-binarios
   (lambda (prim)
     (cases primitiva prim
-      (sum-prim () (lambda (a b)(string-append "b" (number->string(+ (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-          (minus-prim () (lambda (a b)(string-append "b" (number->string(- (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-          (mult-prim () (lambda (a b)(string-append "b"(number->string(* (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-          (mod-prim () ((lambda (a b)(string-append "b" (number->string(modulo (string->number (substring a) 2) (string->number (substring b) 2)) 2)))))
-          (elevar-prim ()(lambda (a b)(string-append "b" (number->string(expt (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-          (menor-prim () (lambda (a b)(string-append "b" (number->string(< (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-          (mayor-prim ()(lambda (a b)(string-append "b" (number->string(> (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-          (menorigual-prim () (lambda (a b) (string-append "b" (number->string(<= (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-          (mayorigual-prim () (lambda (a b) (string-append "b"(number->string(>= (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-          (diferente-prim ()(lambda (a b) (string-append "b"(number->string(not (= (string->number (substring a) 2) (string->number (substring b) 2)) 2)))))
-          (igual-prim () (lambda (a b) (string-append "b"(number->string(= (string->number (substring a) 2) (string->number (substring b) 2)) 2))))
-    )
+      (sum-prim () (lambda (a b) (cond
+       [(and (sacarPrimero a) (sacarPrimero b)) (define sumardos (number->string (+ (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2) 2)))
+              (if (sacarPrimero sumardos) (string->symbol (string-append "-b" (substring sumardos 1))) (string->symbol(string-append "b" sumardos)))]
+        [(sacarPrimero a) (define sumaa (number->string (+ (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2)) 2))
+              (if (sacarPrimero sumaa) (string->symbol (string-append "-b" (substring sumaa 1))) (string->symbol(string-append "b" sumaa)))]
+        [(sacarPrimero b) (define sumab (number->string (+ (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2))))
+              (if (sacarPrimero sumab) (string->symbol (string-append "-b" (substring sumab 1))) (string->symbol(string-append "b" sumab)))]
+        [else (string->symbol (string-append "b" (number->string(+ (string->number (substring a 1) 2) (string->number (substring b 1) 2)) 2)))]      
+           
+      )))
+      (minus-prim () (lambda (a b) (cond
+          [(and (sacarPrimero a) (sacarPrimero b)) (define restados (number->string (- (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2)) 2))
+              (if (sacarPrimero restados) (string->symbol (string-append "-b" (substring restados 1))) (string->symbol(string-append "b" restados)))]
+        [(sacarPrimero a) (define resta (number->string (- (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2)) 2))
+              (if (sacarPrimero resta) (string->symbol (string-append "-b" (substring resta 1))) (string->symbol(string-append "b" resta)))]
+        [(sacarPrimero b) (define restab (number->string (- (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2)) 2))
+              (if (sacarPrimero restab) (string->symbol (string-append "-b" (substring restab 1))) (string->symbol(string-append "b" restab)))]
+             [else (string->symbol (string-append "b" (number->string(- (string->number (substring a 1) 2) (string->number (substring b 1) 2)) 2)))]      
+      )))
+      (mult-prim () (lambda (a b) (cond
+       [(and (sacarPrimero a) (sacarPrimero b)) (define multdos (number->string (* (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2)) 2))
+              (if (sacarPrimero multdos) (string->symbol (string-append "-b" (substring multdos 1))) (string->symbol(string-append "b" multdos)))]
+        [(sacarPrimero a) (define multa (number->string (* (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2)) 2))
+              (if (sacarPrimero multa) (string->symbol (string-append "-b" (substring multa 1))) (string->symbol(string-append "b" multa)))]
+        [(sacarPrimero b) (define multb (number->string (* (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2)) 2))
+              (if (sacarPrimero multb) (string->symbol (string-append "-b" (substring multb 1))) (string->symbol(string-append "b" multb)))]
+              [else (string->symbol (string-append "b" (number->string(* (string->number (substring a 1) 2) (string->number (substring b 1) 2)) 2)))]      
+      )))
+      (mod-prim () (lambda (a b) (cond
+      [(and (sacarPrimero a) (sacarPrimero b)) (define moddos (number->string (modulo (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2)) 2))
+              (if (sacarPrimero moddos) (string->symbol (string-append "-b" (substring moddos 1))) (string->symbol(string-append "b" moddos)))]
+
+        [(sacarPrimero a) (define moda (number->string (modulo (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2)) 2))
+              (if (sacarPrimero moda) (string->symbol (string-append "-b" (substring moda 1))) (string->symbol(string-append "b" moda)))]
+        [(sacarPrimero b) (define modb (number->string (modulo (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2)) 2))
+              (if (sacarPrimero modb) (string->symbol (string-append "-b" (substring modb 1))) (string->symbol(string-append "b" modb)))]
+               [else (string->symbol (string-append "b" (number->string(modulo (string->number (substring a 1) 2) (string->number (substring b 1) 2)) 2)))]      
+      )))
+      (elevar-prim () (lambda (a b) (cond
+      [(and (sacarPrimero a) (sacarPrimero b)) (define elevardos (number->string (expt (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2)) 2))
+              (if (sacarPrimero elevardos) (string->symbol (string-append "-b" (substring elevardos 1))) (string->symbol(string-append "b" elevardos)))]
+        [(sacarPrimero a) (define elevara (number->string (expt (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2)) 2))
+              (if (sacarPrimero elevara) (string->symbol (string-append "-b" (substring elevara 1))) (string->symbol(string-append "b" elevara)))]
+        [(sacarPrimero b) (define elevarb (number->string (expt (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2)) 2))
+              (if (sacarPrimero elevarb) (string->symbol (string-append "-b" (substring elevarb 1))) (string->symbol(string-append "b" elevarb)))]
+               [else (string->symbol (string-append "b" (number->string(expt (string->number (substring a 1) 2) (string->number (substring b 1) 2)) 2)))]      
+      )))
+      (menor-prim () (lambda (a b) (cond
+        [(and (sacarPrimero a) (sacarPrimero b)) (< (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2))]
+        [(sacarPrimero a)  (< (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2))]
+        [(sacarPrimero b)  (< (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2))]
+        [else (< (string->number (substring a 1) 2) (string->number (substring b 1) 2))]
+        )))
+      (mayor-prim () (lambda (a b) (cond
+        [(and (sacarPrimero a) (sacarPrimero b)) (> (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2))]
+        [(sacarPrimero a)  (> (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2))]
+        [(sacarPrimero b)  (> (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2))]
+        [else (> (string->number (substring a 1) 2) (string->number (substring b 1) 2))]
+        )))
+      (menorigual-prim () (lambda (a b) (cond
+        [(and (sacarPrimero a) (sacarPrimero b)) (<= (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2))]
+       [(sacarPrimero a)  (<= (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2))]
+        [(sacarPrimero b)  (<= (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2))]
+        [else (<= (string->number (substring a 1) 2) (string->number (substring b 1) 2))]
+        )))
+      (mayorigual-prim () (lambda (a b) (cond
+        [(and (sacarPrimero a) (sacarPrimero b)) (>= (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2))]
+        [(sacarPrimero a)  (>= (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2))]
+        [(sacarPrimero b)  (>= (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2))]
+        [else (>= (string->number (substring a 1) 2) (string->number (substring b 1) 2))]
+        )))
+      (diferente-prim () (lambda (a b) (cond
+        [(and (sacarPrimero a) (sacarPrimero b)) (not (= (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2)))]
+          [(sacarPrimero a)  (not (= (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2)))]
+        [(sacarPrimero b)  (not (= (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2)))]
+        [else (not (= (string->number (substring a 1) 2) (string->number (substring b 1) 2)))]
+        )))
+      (igual-prim () (lambda (a b) (cond
+        [(and (sacarPrimero a) (sacarPrimero b)) (= (string->number (string-append "-" (substring a 2)) 2) (string->number (string-append "-" (substring b 2)) 2))]
+         [(sacarPrimero a)  (= (string->number (string-append "-" (substring a 2)) 2) (string->number (substring b 1) 2))]
+        [(sacarPrimero b)  (= (string->number (substring a 1) 2) (string->number (string-append "-" (substring b 2)) 2))]
+        [else (= (string->number (substring a 1) 2) (string->number (substring b 1) 2))]
+        )))
+              
+     )
   )
 )
   
+(define sacarPrimero
+(lambda (a)
+  (char=? (string-ref a 0) #\-)
+  
+  )
+)
 
 
 
@@ -362,8 +405,8 @@
 (define init-env
   (lambda ()
     (extend-env
-     '(i v x)
-     '(1 5 10)
+     '(a b c)
+     '(2 3 4)
      (empty-env))))
 
 ;El Interpretador (FrontEnd + Evaluación + señal para lectura +
