@@ -59,7 +59,7 @@
 
 
     ;;Condicionales
-    (expresion ("if" expresion "{" expresion "else" expresion "}") if-exp)
+    (expresion ("if" expresion "{" expresion "elif" expresion "{" expresion "}" "else" expresion "}") if-exp)
 
 
     ;;Iteradores
@@ -207,7 +207,7 @@
                  (setref!
                   (apply-env-ref env id)
                   (evaluar-expresion rhs-exp env))
-                 1))
+                 1));;devuelve 1 para indicar que la operación se realizó correctamente.
       (prim-num-exp (exp1 prim exp2) 
       ;;donde dice apply-binarios poner apply-num-prim para que funcione
       (cond
@@ -231,7 +231,7 @@
       (if-exp (test-exp true-exp false-exp)
               (if (evaluar-expresion test-exp env)
                   (evaluar-expresion true-exp env)
-                  (evaluar-expresion false-exp env)))
+                  (evaluar-expresion false-exp env)))6
 
       (begin-exp (exp exps) 
                  (let loop ((acc (evaluar-expresion exp env))
@@ -528,4 +528,4 @@
                 #f))))))
 
 
-(interpretador)
+;;(interpretador)
